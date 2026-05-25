@@ -11,15 +11,25 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// Initialize Gemini SDK with telemetry header
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+// Lazy initialization of Gemini SDK as per security and stability guidelines
+let aiInstance: GoogleGenAI | null = null;
+function getAI(): GoogleGenAI {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey.trim() === "") {
+      throw new Error("GEMINI_API_KEY belum dikonfigurasi atau masih menggunakan nilai placeholder. Silakan tambahkan API Key Gemini Anda melalui tombol Settings (kemudian Secrets) di menu kiri bawah Google AI Studio.");
+    }
+    aiInstance = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+  }
+  return aiInstance;
+}
 
 // Helper to parse JSON clean, handling any potential markdown formatting wrapping from Gemini's output
 function parseCleanJson(text: string) {
@@ -55,7 +65,7 @@ function parseCleanJson(text: string) {
 async function generateSongContentWithFallback(prompt: string, schema: any) {
   try {
     console.log("Memulai pencarian lagu dengan Google Search Grounding di Gemini...");
-    const response = await ai.models.generateContent({
+    const response = await getAI().models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
@@ -69,7 +79,7 @@ async function generateSongContentWithFallback(prompt: string, schema: any) {
     console.warn("Google Search Grounding gagal atau diblokir. Menggunakan model fallback offline:", searchError.message);
     // If the Search Grounding is blocked or throws an error (very common for unpaid API keys, specific regions, or enterprise setups)
     // we retry with the standard model generation, instructing it to fulfill the requested schema.
-    const fallbackResponse = await ai.models.generateContent({
+    const fallbackResponse = await getAI().models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt + "\n\nCatatan: Jangan gunakan alat pencarian eksternal. Berikan rekomendasi lagu terbaik dari memorimu dalam format JSON murni sesuai schema yang diminta.",
       config: {

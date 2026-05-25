@@ -82,6 +82,7 @@ export default function App() {
     artist: string;
   } | null>(null);
   const [isGlobalPlaying, setIsGlobalPlaying] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Favorites state
   const [favorites, setFavorites] = useState<Favorite[]>([]);
@@ -100,7 +101,18 @@ export default function App() {
   // 2. Listen to user's favorites from Firestore
   useEffect(() => {
     if (!user) {
-      setFavorites([]);
+      // Load local favorites when guest mode / offline
+      try {
+        const localFavs = localStorage.getItem("melodiai_local_favorites");
+        if (localFavs) {
+          setFavorites(JSON.parse(localFavs));
+        } else {
+          setFavorites([]);
+        }
+      } catch (err) {
+        console.error("Gagal membaca favorit lokal:", err);
+        setFavorites([]);
+      }
       return;
     }
 
@@ -144,12 +156,14 @@ export default function App() {
 
   // Handle Google authenticating Popup
   const handleGoogleLogin = async () => {
+    setAuthError(null);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       setLocalAuthNotice(null);
     } catch (e: any) {
       console.error("Gagal masuk dengan Google:", e);
+      setAuthError(e.message || "Gagal menghubungkan ke Google Auth. Pastikan popups diizinkan.");
     }
   };
 
@@ -228,11 +242,38 @@ export default function App() {
   // Toggle favorite trigger
   const handleFavoriteToggle = async (song: Song) => {
     if (!user) {
-      setLocalAuthNotice("Silakan masuk dengan Google untuk menyimpan daftar lagu favorit secara online!");
-      // Auto dismiss notice after 5 seconds
+      // Offline/Local Storage Favorites support
+      const localId = `local_${song.youtubeId}`;
+      const isFav = favorites.some((f) => f.youtubeId === song.youtubeId);
+      let updated: Favorite[] = [];
+      if (isFav) {
+        updated = favorites.filter((f) => f.youtubeId !== song.youtubeId);
+        setLocalAuthNotice("Lagu berhasil dihapus dari daftar favorit lokal.");
+      } else {
+        const newFav: Favorite = {
+          id: localId,
+          userId: "guest",
+          title: song.title,
+          artist: song.artist,
+          youtubeId: song.youtubeId,
+          thumbnail: `https://img.youtube.com/vi/${song.youtubeId}/mqdefault.jpg`,
+          addedAt: { seconds: Math.floor(Date.now() / 1000) },
+          year: song.year || "",
+          album: song.album || ""
+        };
+        updated = [newFav, ...favorites];
+        setLocalAuthNotice("Berhasil disimpan secara lokal (Offline)! Hubungkan akun Google kapan saja untuk sinkronisasi cloud.");
+      }
+      setFavorites(updated);
+      try {
+        localStorage.setItem("melodiai_local_favorites", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Gagal menyimpan ke localStorage:", e);
+      }
+      // Auto dismiss notice
       setTimeout(() => {
         setLocalAuthNotice(null);
-      }, 7000);
+      }, 6000);
       return;
     }
 
@@ -420,27 +461,75 @@ export default function App() {
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="fixed top-24 left-4 right-4 md:left-auto md:right-8 z-55 md:max-w-md bg-[#160b0d] border border-rose-500/40 text-rose-200 px-4 py-3 rounded-xl shadow-2xl flex items-start gap-3"
+              className="fixed top-24 left-4 right-4 md:left-auto md:right-8 z-55 md:max-w-md bg-[#160b0d] border border-indigo-500/40 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-start gap-3 backdrop-blur-md"
             >
-              <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-xs font-sans font-medium">MelodiAI Cloud Services</p>
-                <p className="text-[11px] font-sans text-rose-300/90 mt-0.5">
+                <p className="text-xs font-sans font-medium text-indigo-300">Sistem MelodiAI</p>
+                <p className="text-[11px] font-sans text-slate-200 mt-0.5">
                   {localAuthNotice}
                 </p>
-                <button
-                  onClick={handleGoogleLogin}
-                  className="mt-2 text-[10px] font-mono uppercase bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold px-2 py-1 rounded transition-colors cursor-pointer"
-                >
-                  Masuk Sekarang
-                </button>
+                {!user && (
+                  <button
+                    onClick={handleGoogleLogin}
+                    className="mt-2 text-[10px] font-mono uppercase bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-2 py-1 rounded transition-colors cursor-pointer border-0"
+                  >
+                    Masuk Google
+                  </button>
+                )}
               </div>
               <button
                 onClick={() => setLocalAuthNotice(null)}
-                className="text-xs text-rose-400 hover:text-white"
+                className="text-xs text-slate-400 hover:text-white bg-transparent border-0 cursor-pointer"
               >
                 ×
               </button>
+            </motion.div>
+          )}
+
+          {authError && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed top-24 left-4 right-4 md:left-auto md:right-8 z-55 md:max-w-md bg-slate-900 border border-amber-500/40 text-slate-100 p-4 rounded-xl shadow-2xl flex flex-col gap-3 backdrop-blur-md"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs font-sans font-bold text-amber-400">Tidak Bisa Terhubung ke Google</p>
+                  <p className="text-[11px] font-sans text-slate-300 mt-1 pb-1">
+                    Ini adalah batasan keamanan Firebase Auth pada domain kustom/container yang di-deploy.
+                  </p>
+                  <p className="text-[9.5px] font-sans text-slate-400 mt-1 bg-black/40 p-2 rounded border border-white/5 font-mono break-all leading-relaxed">
+                    Error: {authError}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAuthError(null)}
+                  className="text-sm text-slate-400 hover:text-white bg-transparent border-0 cursor-pointer font-bold"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="text-[10.5px] font-sans text-slate-300 border-t border-white/5 pt-2.5 space-y-2 bg-indigo-950/20 p-2.5 rounded">
+                <p className="font-semibold text-indigo-400">Cara Memperbaiki (Hanya perlu sekali):</p>
+                <ol className="list-decimal list-inside space-y-1.5 text-slate-300">
+                  <li>Buka <strong className="text-slate-100">Firebase Console</strong> Anda.</li>
+                  <li>Masuk ke <strong className="text-indigo-300">Authentication &gt; Settings &gt; Authorized domains</strong>.</li>
+                  <li>Masukkan domain berikut ke daftar izin keamanan:
+                    <div className="mt-1 font-mono text-[9px] text-indigo-200 bg-black/60 p-1.5 rounded select-all break-all leading-relaxed">
+                      ais-dev-d3yidodegafj6yupmgmkql-38910374399.asia-east1.run.app<br />
+                      ais-pre-d3yidodegafj6yupmgmkql-38910374399.asia-east1.run.app
+                    </div>
+                  </li>
+                  <li>Pastikan metode <strong className="text-slate-100">Google Sign-In</strong> sudah aktif di tab <strong className="text-slate-100">Sign-in method</strong>.</li>
+                </ol>
+                <p className="text-[9.5px] text-amber-400 italic font-medium pt-1">
+                  Catatan: Anda tetap bisa menikmati aplikasi ini dengan Mode Tamu (lagu disimpan offline di peramban Anda)!
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

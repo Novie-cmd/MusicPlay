@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net - Default Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable global helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation blueprint for Favorite entity
+    function isValidFavorite(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'artist', 'youtubeId', 'addedAt'])
+        && data.keys().size() <= 7
+        && data.id is string && data.id.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.userId == request.auth.uid
+        && data.title is string && data.title.size() <= 200
+        && data.artist is string && data.artist.size() <= 200
+        && data.youtubeId is string && data.youtubeId.size() <= 32
+        && (!data.keys().hasAny(['thumbnail']) || (data.thumbnail is string && data.thumbnail.size() <= 512))
+        && data.addedAt == request.time;
+    }
+
+    // Match rules for the favorites collection
+    match /favorites/{favoriteId} {
+      allow get: if isOwner(resource.data.userId) && isValidId(favoriteId);
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isEmailVerified() 
+        && isValidId(favoriteId) 
+        && request.resource.id == favoriteId  // ID alignment
+        && isValidFavorite(request.resource.data);
+        
+      allow delete: if isOwner(resource.data.userId) && isValidId(favoriteId);
+      
+      allow update: if isEmailVerified()
+        && isValidId(favoriteId)
+        && isOwner(resource.data.userId)
+        && request.resource.data.userId == resource.data.userId  // Immutable owner
+        && request.resource.data.id == resource.data.id          // Immutable ID
+        && request.resource.data.youtubeId == resource.data.youtubeId // Immutable youtube ID
+        && isValidFavorite(request.resource.data);
+    }
+  }
+}

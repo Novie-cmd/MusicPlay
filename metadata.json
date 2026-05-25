@@ -1,0 +1,6 @@
+{
+  "name": "Pencarian Lagu & Pemutar Video",
+  "description": "Aplikasi pencarian lagu bertenaga AI dengan pemutaran video YouTube dan penyimpanan lagu favorit online via Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "Favorite": {
+      "title": "Favorite",
+      "description": "User's favorite song metadata stored online",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the favorite song record"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Auth UID of the user who favorited the song"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the song"
+        },
+        "artist": {
+          "type": "string",
+          "description": "Artist of the song"
+        },
+        "youtubeId": {
+          "type": "string",
+          "description": "YouTube Video ID"
+        },
+        "thumbnail": {
+          "type": "string",
+          "description": "Thumbnail URL of the song design"
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when favorited"
+        }
+      },
+      "required": ["id", "userId", "title", "artist", "youtubeId", "addedAt"]
+    }
+  },
+  "firestore": {
+    "favorites/{favoriteId}": {
+      "schema": "Favorite",
+      "description": "Stores user favorite song list linked by userId"
+    }
+  }
+}
